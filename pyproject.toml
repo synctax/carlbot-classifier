@@ -1,0 +1,23 @@
+[project]
+name = "carlbot-classifier"
+version = "0.1.0"
+description = ""
+authors = [{ name = "synctax", email = "benwyngaard@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+  "pandas (>=3.0.1,<4.0.0)",
+  "tqdm (>=4.67.3,<5.0.0)",
+  "openrouter (>=0.8.0,<0.9.0)",
+]
+
+[tool.poetry]
+packages = [{ include = "carlbot_classifier", from = "src" }]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"

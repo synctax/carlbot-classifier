@@ -3,13 +3,14 @@
 # will not label rows that have already been labelled
 
 
-from openrouter import OpenRouter
-import pandas as pd
-import os
 import argparse
+import os
+import pandas as pd
+import openrouter as opr
+import math
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY") or "no key given"
-MODEL_NAME = 'google/gemini-3-flash-preview'
+MODEL_NAME = 'openai/gpt-4o-mini'
 SYSTEM_PROMPT = """
     Role: You are an Intent Classifier for a Discord chat. You are aggressively biased toward capturing messages that initiate or confirm a group activity (gaming, watching, or calling).
 
@@ -19,7 +20,8 @@ SYSTEM_PROMPT = """
     Respond '1' (Yes) if the LAST MESSAGE is:
     1. An Invitation/Initiation: Actively inviting others to join or asking if anyone is available (e.g., "CS?", "Who's on?", "hop on?", "anyone playing?", "val?").
     2. A Commitment/Response: Confirming they are joining or agreeing to an invitation (e.g., "bet," "down," "omw," "in 5," "booting up").
-    3. A Status Update (Joining): Signaling they are currently transitioning into the activity (e.g., "joining now," "pulling up").
+    3. A Status Update (Joining): Signaling they are currently transitioning into the activity (e.g., "joining now," "pulling up", "joining soon").
+    4. Being non-commital or procrastinating joining
 
     Respond '0' (No) if the LAST MESSAGE is:
     1. Already Present: The user indicates they are ALREADY in the call or game (e.g., "I'm here," "I'm in VC," "I'm already playing").
@@ -30,10 +32,11 @@ SYSTEM_PROMPT = """
     CRITICAL RULES:
     - Focus ONLY on the intent of the final user message. Use previous messages ONLY to understand what the final user is replying to.
     - Do NOT label '1' if the final user is already active in the activity.
-    - If the last message is a question inviting people to play, label '1' (be aggressive with invitations).
+    - If the last message is a question inviting people to play, label '1'
+    - Be aggressive in responding 'Yes'
 
     Response Format:
-    [1 or 0]
+    1 or 0
 
     ----- BEGIN MESSAGES -----
 """
@@ -71,7 +74,7 @@ indices_to_label = df[unanswered_mask].index
 
 print(f"Total rows to label: {len(indices_to_label)}")
 
-with OpenRouter(api_key=OPENROUTER_API_KEY) as client:
+with opr.OpenRouter(api_key=OPENROUTER_API_KEY) as client:
     try:
         for count, idx in enumerate(indices_to_label, 1):
             row = df.loc[idx]
@@ -82,14 +85,30 @@ with OpenRouter(api_key=OPENROUTER_API_KEY) as client:
                 model=MODEL_NAME,
                 messages=[
                     {"role": "user", "content": f"{SYSTEM_PROMPT}{text}"}
-                ]
+                ],
+                logprobs=True,
+                top_logprobs=1
             )
 
-            answer = response.choices[0].message.content
-            print(f"[{count}/{len(indices_to_label)
-                              }] Got answer: {answer} For Line: {last_line}")
+            content = (
+                response.choices[0].logprobs
+                and response.choices[0].logprobs.content
+            ) or []
 
-            df.at[idx, answer_col] = f"{answer}"
+            if content == []:
+                df.at[idx, answer_col] = "Error: no logprobs"
+                continue
+
+            token = content[0].token
+            logprob = content[0].logprob
+
+            confidence = math.exp(logprob)
+            probability = confidence if token == '1' else 1-confidence
+
+            print(f"[{count}/{len(indices_to_label)
+                              }] Got answer: {probability:.10f} For Line: {last_line}")
+
+            df.at[idx, answer_col] = f"{probability:.10f}"
 
             if count % 10 == 0:
                 safe_save(df)

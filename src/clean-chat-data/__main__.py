@@ -84,8 +84,6 @@ text_col = "Text"
 answer_col = "Answer"
 
 
-df[content_col] = df[username_col] + ": " + df[content_col]
-
 context_cols = []
 for i in range(args.context, 0, -1):
     col_name = f"prev_msg_{i}"

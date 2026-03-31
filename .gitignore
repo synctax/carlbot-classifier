@@ -1,4 +1,4 @@
 .env
 assets/
 .DS_Store
-src/**/__pycache/
+src/**/__pycache__/
